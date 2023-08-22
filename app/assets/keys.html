@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>keys</title>
+    <style>
+      button {
+        flex: 1;
+        height: 2rem;
+        margin: 0.2em;
+        font-size: 1em;
+        cursor: pointer;
+        border: 1px solid grey;
+        padding: 0.2em;
+        border-radius: 23px;
+        box-shadow: 0px 6px #ddd;
+        background-color: #fff;
+        transition: all 0.1s;
+      }
+
+      button:hover {
+        background-color: rgba(200, 200, 200, 0.1);
+      }
+
+      button:active {
+        background-color: rgba(200, 200, 200, 0.1);
+        box-shadow: 0px 6px 3px rgba(0, 0, 0, 0.3);
+        transform: translateY(1px);
+      }
+      li {
+        display: flex;
+        padding: 0.3em;
+      }
+
+      ul {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <ul id="keyContainer"></ul>
+    <script>
+      const displayFrame = window.parent.document.getElementById("display");
+      let screen =
+        displayFrame.contentWindow.document.getElementById("display");
+
+      const keyContainer = document.getElementById("keyContainer");
+      const view = {
+        createElement(tag, content, attributes) {
+          const element = document.createElement(tag);
+          element.textContent = content;
+          for (attribute in attributes) {
+            element.setAttribute(attribute, attributes[attribute]);
+          }
+          return element;
+        },
+      };
+      const keypads = [
+        [9, 8, 7, "c"],
+        [6, 5, 4, "+"],
+        [3, 2, 1, "-"],
+        [0, "", "", "="],
+      ];
+      keypads.forEach((keyRow) => {
+        const li = view.createElement("li", "", {});
+        keyRow.forEach((key) => {
+          if (key) {
+            const button = view.createElement("button", key, {
+              type: "button",
+              value: key,
+            });
+            li.appendChild(button);
+          }
+        });
+
+        keyContainer.appendChild(li);
+      });
+
+      keyContainer.addEventListener(
+        "click",
+        (e) => {
+          const element = e.target;
+
+          const { value } = element;
+
+          if (value) {
+            if (value === "=") {
+              screen.textContent = eval(screen.textContent);
+            } else if (value === "c") {
+              screen.textContent = "";
+            } else {
+              screen.textContent += value;
+            }
+          }
+        },
+        true
+      );
+    </script>
+  </body>
+</html>

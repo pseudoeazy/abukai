@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Screen Sharing</title>
+  </head>
+  <style>
+    video {
+      width: 240px;
+      height: 180px;
+      border: 1px solid black;
+      margin-right: 12px;
+    }
+  </style>
+  <body>
+    <h1>Screen Sharing App</h1>
+    <button id="startButton">Start Sharing</button>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay muted></video>
+
+    <script>
+      const view = {
+        startButton: document.getElementById("startButton"),
+        localVideo: document.getElementById("localVideo"),
+        remoteVideo: document.getElementById("remoteVideo"),
+      };
+
+      class SignalingChannel {
+        constructor(wsURL) {
+          this.wsURL = wsURL;
+          this.reconnectInterval = 1000; // Initial reconnection interval in milliseconds
+          this.maxReconnectInterval = 60000; // Maximum reconnection interval in milliseconds
+        }
+
+        connect() {
+          this.socket = new WebSocket(this.wsURL);
+          this.onOpen();
+          this.onClose();
+        }
+        onOpen() {
+          this.socket.addEventListener("open", () => {
+            console.log(`CONNECTED to ${this.wsURL}`);
+            this.reconnectInterval = 1000; // Reset the reconnect interval on successful connection
+          });
+        }
+        onClose() {
+          this.socket.onclose = (event) => {
+            console.log(
+              "WebSocket connection closed:",
+              event.code,
+              event.reason
+            );
+
+            // Reconnect with an exponential backoff strategy
+            setTimeout(this.connect, this.reconnectInterval);
+
+            // Increase the reconnect interval exponentially, up to the maximum
+            this.reconnectInterval = Math.min(
+              this.reconnectInterval * 2,
+              this.maxReconnectInterval
+            );
+          };
+        }
+
+        // To send data through the WebSocket
+        sendData(data) {
+          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(data);
+          } else {
+            console.log("WebSocket is not open. Data not sent.");
+          }
+        }
+      }
+
+      const signalingChannel = new SignalingChannel(
+        "wss://ws.postman-echo.com/raw"
+      );
+      signalingChannel.connect();
+
+      async function makeRequest() {
+        const constraints = {
+          video: true,
+          audio: false,
+        };
+        let localStream = await navigator.mediaDevices.getDisplayMedia(
+          constraints
+        );
+        view.localVideo.srcObject = localStream;
+        const configuration = {
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        };
+        const peerConnection = new RTCPeerConnection(configuration);
+
+        signalingChannel.socket.addEventListener("message", async (event) => {
+          const message = JSON.parse(event.data);
+
+          if (message.answer) {
+            console.log("Request Answer:", message.answer);
+            let receivedAnswer = message.answer;
+            await peerConnection.setRemoteDescription(receivedAnswer);
+          }
+        });
+        localStream.getTracks().forEach((track) => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.ontrack = (event) => {
+          let remoteStream = event.streams[0];
+          view.remoteVideo.srcObject = remoteStream;
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        signalingChannel.sendData(JSON.stringify({ offer }));
+      }
+
+      async function recieveRequest() {
+        let remoteStream;
+        const constraints = {
+          video: true,
+          audio: false,
+        };
+        remoteStream = await navigator.mediaDevices.getDisplayMedia(
+          constraints
+        );
+        view.remoteVideo.srcObject = remoteStream;
+        const configuration = {
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        };
+        const peerConnection = new RTCPeerConnection(configuration);
+
+        signalingChannel.socket.addEventListener("message", async (event) => {
+          const message = JSON.parse(event.data);
+          if (message?.offer) {
+            let receivedOffer = message.offer;
+            const localDesc = new RTCSessionDescription(receivedOffer);
+            console.log({ localDesc });
+            await peerConnection.setRemoteDescription(receivedOffer);
+          }
+        });
+
+        async function sendAnswer() {
+          const answer = await peerConnection.createAnswer();
+
+          await peerConnection.setLocalDescription(answer);
+          signalingChannel.sendData(JSON.stringify({ answer }));
+        }
+
+        peerConnection.addEventListener(
+          "signalingstatechange",
+          (ev) => {
+            switch (peerConnection.signalingState) {
+              case "have-remote-offer":
+                sendAnswer();
+                break;
+            }
+          },
+          false
+        );
+      }
+
+      async function handleScreenShare() {
+        try {
+          makeRequest();
+          recieveRequest();
+        } catch (error) {
+          console.error("Error starting screen sharing:", error);
+        }
+      }
+      view.startButton.addEventListener("click", handleScreenShare);
+    </script>
+  </body>
+</html>
