@@ -14,7 +14,7 @@
         min-height:70vh;
       }
 
-       iframe {
+    iframe {
       border: none;
       width: 400px;
     }
